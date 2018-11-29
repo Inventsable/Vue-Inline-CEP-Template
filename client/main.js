@@ -113,6 +113,7 @@ var app = new Vue({
     macOS: false,
     panelWidth: 100,
     panelHeight: 200,
+    persistent: true,
     // storage: window.localStorage,
     activeApp: csInterface.hostEnvironment.appName,
     activeTheme: 'darkest',

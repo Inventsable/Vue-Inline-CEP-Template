@@ -4,7 +4,7 @@
     "outFile": "./host.jsx",
     "allowJs": true,
     "noLib": true,
-    "module": "commonjs",
+    // "module": "commonjs",
     "types": [
       "types-for-adobe/illustrator/2015.3"
     ]
