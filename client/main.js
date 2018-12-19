@@ -3,39 +3,319 @@ loadUniversalJSXLibraries();
 loadJSX(csInterface.hostEnvironment.appName + '/host.jsx');
 window.Event = new Vue();
 
+const EventList = [
+  { listenTo: 'debug.on', sendTo: 'debugModeOn', package: false, },
+  { listenTo: 'debug.off', sendTo: 'debugModeOff', package: false, },
+];
+
+for (var e = 0; e < EventList.length; e++) {
+  var event = EventList[e];
+  console.log(event);
+  csInterface.addEventListener(event.listenTo, function(evt) {
+    console.log(evt)
+    if (/debug/.test(evt.type)) {
+      if (evt.type == 'debug.on')
+        Event.$emit('debugModeOn');
+      if (evt.type == 'debug.off')
+        Event.$emit('debugModeOff');
+    } else {
+      // This might be broken
+      console.log(event);
+      if (event.package) {
+        // 
+      } else {
+        console.log(event)
+        Event.$emit(event.sendTo);
+      }
+    }
+  });
+}
+
 Vue.component('namelow', {
   template: `
-    <div class="appGrid" @mouseover="wakeApp" @mouseout="sleepApp">
-      <mod-keys></mod-keys>
+    <div class="appGrid" 
+      @mouseover="wakeApp" 
+      @mouseout="sleepApp"
+      :style="styleDebug()">
+      <notification v-if="hasNotification" :model="notification" />
+      <event-manager />
+      <stylizer />
+      <panel>
+        <top>
+          <custom-input size="large" />
+          <custom-input size="mid" />
+          <custom-input size="small" />
+        </top>
+        <bottom>
+          <div class="foot"></div>
+        </bottom>
+      </panel>
     </div>
   `,
   data() {
     return {
-      showFoot: false,
+      wakeOnly: false,
+      showConsole: true,
+      hasNotification: false,
+      notification: {
+        data: 'test update',
+        details: '',
+        notes: [
+          "dummy text 1",
+          "dummy text 2",
+          "dummy text 3"
+        ],
+        preview: 'https://via.placeholder.com/960x540/434343/b7b7b7',
+      }
     }
   },
+  computed: {
+    debugMode: function () { return this.$root.debugMode },
+    isWake: function () { return this.$root.isWake },
+  },
   methods: {
-    wakeApp(evt) {
-      console.log('Waking up')
+    // checkDebug() {
+    //   if ((this.isWake) && (this.debugMode)) {
+    //     let selection = this.$root.getCSS('color-selection');
+    //     this.$root.setCSS('color-debug', selection);
+    //   } else {
+    //     this.$root.setCSS('color-debug', 'transparent');
+    //   }
+    // },
+    styleDebug() { return ((this.debugMode) && (this.isWake)) ? `border-color: ${this.$root.getCSS('color-selection')}` : `border-color: transparent`; },
+    wakeApp() {
       this.$root.wake();
+      this.$root.dispatchEvent('debug.target', this.$root.name);
+      if (this.debugMode) {
+        this.$root.dispatchEvent('debug.link', 'Can start to read')
+      } else {
+        // console.log('Not in debug mode')
+      }
+      // this.checkDebug();
+      Event.$emit('startStats');
     },
-    sleepApp(evt) {
-      console.log('Sleeping')
-      this.$root.sleep();
-      Event.$emit('clearMods');
+    sleepApp() {
+      if (this.wakeOnly) {
+        this.wakeApp();
+        Event.$emit('clearStats');
+      } else {
+        this.$root.sleep();
+        if (this.debugMode) {
+          // console.log('Attempting to send debug.unlink')
+          this.$root.dispatchEvent('debug.target', '');
+          this.$root.dispatchEvent('debug.unlink', 'Can no longer read')
+        } else {
+          // console.log('Not in debug mode')
+        }
+        Event.$emit('clearStats');
+      }
+      // this.checkDebug();
+    },
+    showNotification() { if (this.$root.notificationsEnabled) { this.hasNotification = true; } },
+    hideNotification() { this.$root.notificationsEnabled = false, this.hasNotification = false; },
+    constructUpdate(msg) { this.notification = JSON.parse(msg); },
+  },
+  mounted() {
+    Event.$on('showNotification', this.showNotification);
+    Event.$on('hideNotification', this.hideNotification);
+    Event.$on('promptUpdate', this.constructUpdate);
+    // Event.$on('debugModeOff', this.checkDebug);
+  }
+})
+Vue.component('panel', { template: `<div class="screen"><slot></slot></div>` })
+Vue.component('top', { template: `<div class="appTop"><slot></slot></div>` })
+Vue.component('middle', { template: `<div class="appMiddle"><slot></slot></div>` })
+Vue.component('bottom', { template: `<div class="appBottom"><slot></slot></div>` })
+
+Vue.component('custom-input', {
+  props: {
+    size: String,
+  },
+  template: `
+    <div class="wrap-input">
+      <input 
+        v-if="size !== 'large'"
+        :class="getClass()"
+        :style="checkSize()"
+        @keyup.enter="submitTest(msg)"
+        v-model="msg" 
+        :placeholder="placeholder""/>
+      <textarea 
+        v-if="size == 'large'"
+        :class="getClass()"
+        :style="checkSize()"
+        @keyup.enter="submitTest(msg)"
+        v-model="msg" 
+        :placeholder="placeholder""/>
+    </div>
+  `,
+  data() {
+    return {
+      msg: '',
+    }
+  },
+  computed: {
+    isWake: function () {
+      return this.$root.isWake;
+    },
+    placeholder: function() {
+      if (this.size == 'large')
+        return `size is automatic`;
+      else if (this.size == 'mid')
+        return `size is automatic`;
+      else if (this.size == 'small')
+        return `mini`
+    },
+  },
+  mounted() {
+    console.log(this.msg)
+  },
+  methods: {
+    checkSize() {
+      if (this.size == 'large')
+        return `width: 100%;`;
+      else if (this.size == 'mid')
+        return `width: auto;`;
+      else if (this.size == 'small')
+        return `width: 5rem;`;
+    },
+    getClass() {
+      return this.isWake ? 'input-active' : 'input-idle'
+    },
+    submitTest(msg) {
+      if (msg.length) {
+        console.log(msg);
+      }
     }
   }
 })
 
-Vue.component('mod-keys', {
+
+Vue.component('notification-icon', {
+  props: {
+    type: String,
+  },
   template: `
     <div 
-      v-mousemove-outside="onMouseOutside"
+      :class="type == 'cancel' ? 'note-icon' : 'note-icon'" 
+      @mouseover="hover = true" 
+      @mouseout="hover = false" 
+      @click="doAction"
+      v-if="type !== 'none'">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50">
+        <path v-if="type == 'cancel'" :style="iconColor" d="M29.24,25,41.12,13.12a3,3,0,0,0-4.24-4.24L25,20.76,13.12,8.88a3,3,0,0,0-4.24,4.24L20.76,25,8.88,36.88a3,3,0,0,0,0,4.24,3,3,0,0,0,4.24,0L25,29.24,36.88,41.12a3,3,0,0,0,4.24,0,3,3,0,0,0,0-4.24Z"/>
+        <path v-if="type == 'arrowRight'" :style="iconColor" d="M18,42a3,3,0,0,1-2.12-.88,3,3,0,0,1,0-4.24L27.76,25,15.88,13.12a3,3,0,0,1,4.24-4.24l14,14a3,3,0,0,1,0,4.24l-14,14A3,3,0,0,1,18,42Z"/>
+        <path v-if="type == 'arrowUp'" :style="iconColor" d="M39,35a3,3,0,0,1-2.12-.88L25,22.24,13.12,34.12a3,3,0,1,1-4.24-4.24l14-14a3,3,0,0,1,4.24,0l14,14a3,3,0,0,1,0,4.24A3,3,0,0,1,39,35Z"/>
+        <path v-if="type == 'arrowLeft'" :style="iconColor" d="M32,42a3,3,0,0,1-2.12-.88l-14-14a3,3,0,0,1,0-4.24l14-14a3,3,0,1,1,4.24,4.24L22.24,25,34.12,36.88a3,3,0,0,1,0,4.24A3,3,0,0,1,32,42Z"/>
+        <path v-if="type == 'arrowDown'" :style="iconColor" d="M25,35a3,3,0,0,1-2.12-.88l-14-14a3,3,0,1,1,4.24-4.24L25,27.76,36.88,15.88a3,3,0,1,1,4.24,4.24l-14,14A3,3,0,0,1,25,35Z"/>
+        <path v-if="type == 'menu'" :style="iconColor" d="M40,28H10a3,3,0,0,1,0-6H40a3,3,0,0,1,0,6Zm3-16a3,3,0,0,0-3-3H10a3,3,0,0,0,0,6H40A3,3,0,0,0,43,12Zm0,26a3,3,0,0,0-3-3H10a3,3,0,0,0,0,6H40A3,3,0,0,0,43,38Z"/>
+        <path v-if="type == 'info'" :style="iconColor" d="M25,4A21,21,0,1,0,46,25,21,21,0,0,0,25,4Zm0,35a3,3,0,1,1,3-3A3,3,0,0,1,25,39Zm1.52-9h-3L21.91,12.37a3.1,3.1,0,1,1,6.18,0Z"/>
+        <path v-if="type == 'home'" :style="iconColor" d="M45.79,26.74l-1.56,1.89a.9.9,0,0,1-1.26.12L26.57,15.17a1.66,1.66,0,0,0-2.14,0L8,28.75a.9.9,0,0,1-1.26-.12L5.21,26.74a.89.89,0,0,1,.12-1.27L23.16,10.71a3.68,3.68,0,0,1,4.65,0l6.54,5.42V10.31a.74.74,0,0,1,.74-.74h3.48a.74.74,0,0,1,.74.74V20.2l6.36,5.27A.89.89,0,0,1,45.79,26.74Zm-12.15-2.3-7.38-5.91a1.23,1.23,0,0,0-1.52,0l-7.38,5.91-5.92,4.73a1.2,1.2,0,0,0-.45.95V40.78a.65.65,0,0,0,.65.65H21a.66.66,0,0,0,.66-.65v-7.9a.65.65,0,0,1,.65-.65H28a.66.66,0,0,1,.66.65v7.9a.65.65,0,0,0,.65.65h9.31a.66.66,0,0,0,.66-.65V29.56a1.23,1.23,0,0,0-.46-1Z"/>
+      </svg>
+    </div>
+  `,
+  data() {
+    return {
+      hover: false,
+    }
+  },
+  computed: {
+    iconColor: function () { return (this.$root.isWake) ? `fill: ${this.$root.getCSS('color-note-icon')}` : `fill: ${this.$root.getCSS('color-text-disabled')}`; }
+  },
+  methods: {
+    doAction() {
+      // console.log(`Clicked on ${this.type}`)
+    }
+  }
+})
+
+Vue.component('notification', {
+  props: {
+    model: Object,
+  },
+  template: `
+    <div class="global-notification">
+      <div class="global-notification-wrap">
+        <div v-if="!alt" class="note-display">
+          <notification-icon type="info" />
+        </div>
+        <div v-if="isLarge" class="note-header">
+          <a @click="goToHome" v-if="!hasDetails && !nullified" class="global-notification-text">{{model.data}}</a>
+          <a @click="goToHome" v-if="hasDetails && !nullified" class="global-notification-text">{{fulldetails}}</a>
+          <span v-if="nullified" class="global-notification-text">No updates</span>
+        </div>
+        <div class="note-cancel" @click="killNote">
+          <notification-icon type="cancel" />
+        </div>
+      </div>
+      <ul v-if="hasDetails && !nullified" class="note-list">
+          <li v-for="(item,key) in model.notes" v-if="!isSmall" class="note-list-note">{{item}}</li>
+          <notification-icon v-for="(item,key) in model.notes" v-if="isSmall" type="info" :title="item" :key="key" />
+      </ul>
+      <div v-if="hasDetails && !nullified"" class="note-preview">
+        <div @click="goToHome" :style="getPreviewStyle(model.preview)"></div>
+      </div>
+      <div v-if="!nullified"" class="global-notification-wrap">
+        <div class="global-notification-toggle" @click="toggleTray" :style="styleTray()">
+          <notification-icon :type="hasDetails ? 'none' : 'arrowDown'" />
+        </div>
+      </div>
+    </div>
+  `,
+  data() {
+    return {
+      alt: true,
+      hasDetails: false,
+      msg: 'Hello notification',
+    }
+  },
+  computed: {
+    fulldetails: function () { return `${this.$root.rootName} ${this.model.details}` },
+    nullified: function () { return !this.$root.needsUpdate },
+    isSmall: function () { return this.$root.isSmall },
+    isMedium: function () { return this.$root.isMedium },
+    isLarge: function () { return this.$root.isLarge },
+    anchorLink: function () { return `https://www.inventsable.cc#${this.$root.rootName}`; },
+  },
+  methods: {
+    goToHome() { cep.util.openURLInDefaultBrowser(this.anchorLink); },
+    styleTray() {
+      if (this.hasDetails) {
+        if (this.isLarge) {
+          return `width: calc(100% - 3rem);`;
+        } else {
+          return `width: 100%;`;
+        }
+      } else {
+        return `width: 100%;`;
+      }
+    },
+    getPreviewStyle(img) { return `cursor:pointer; background-image: url(${img}); background-size: contain; background-repeat: norepeat; background-color: ${this.$root.getCSS('color-note-dark')}`; },
+    toggleTray(el) { this.hasDetails = !this.hasDetails; },
+    killNote() {
+      Event.$emit('hideNotification');
+      const targ = this.$root.findMenuItemById('notificationsEnabled');
+      targ.checked = false;
+      this.$root.setContextMenu();
+    },
+    nullifyUpdate() {
+      this.nullified = true;
+    },
+  },
+  mounted() {
+    Event.$on('nullUpdate', this.nullifyUpdate);
+  }
+})
+
+Vue.component('event-manager', {
+  template: `
+    <div 
       v-keydown-outside="onKeyDownOutside"
       v-keyup-outside="onKeyUpOutside"
-      class="visualizerModKeys" 
-      :style="'grid-template-columns: repeat(' + this.activeList.length + ', 1fr);'">
-      <div v-for="modKey in activeList" :class="getModKeyClass(modKey)"></div>
+      v-mousemove-outside="onMouseMove"
+      v-mouseup-outside="onMouseUp"
+      v-mousedown-outside="onMouseDown"
+      v-click-outside="onClickOutside">
     </div>
   `,
   data() {
@@ -48,21 +328,70 @@ Vue.component('mod-keys', {
       Shift: false,
       Ctrl: false,
       Alt: false,
+      wasDragging: false,
+      lastMouseX: 0,
+      lastMouseY: 0,
     }
   },
   mounted() {
     var self = this;
     this.activeMods();
-    Event.$on('updateModsUI', self.updateMods);
-    Event.$on('clearMods', self.clearMods);
+    this.handleResize(null);
+    window.addEventListener('resize', this.handleResize);
+    csInterface.addEventListener(CSInterface.THEME_COLOR_CHANGED_EVENT, self.appThemeChanged);
+    this.appThemeChanged();
+    Event.$on('newAction', this.checkDebugAction);
+    Event.$on('keypress', this.checkDebugKeypress);
+  },
+  computed: {
+    isDefault: function () { return this.$root.isDefault },
+    mouseX: function () { return this.$root.mouseX; },
+    mouseY: function () { return this.$root.mouseY; },
+    hasCtrl: function () { return this.$root.Ctrl ? 'Ctrl' : false; },
+    hasShift: function () { return this.$root.Shift ? 'Shift' : false; },
+    hasAlt: function () { return this.$root.Alt ? 'Alt' : false; },
   },
   methods: {
+    checkDebugAction(msg) {
+      if (this.$root.debugMode) {
+        console.log(`Debug action is ${msg}`)
+        this.$root.lastAction = msg;
+        this.$root.dispatchEvent('debug.listen', JSON.stringify(this.$root.clone));
+      }
+    },
+    checkDebugKeypress(e) {
+      if (this.$root.debugMode) {
+        console.log(`Debug keypress is ${e.key}`)
+        this.getLastKey(e.key);
+        this.$root.dispatchEvent('debug.listen', JSON.stringify(this.$root.clone));
+      }
+    },
+    setPanelCSSHeight() {
+      this.$root.setCSS('evt-height', `${this.$root.panelHeight - 50}px`);
+      this.$root.setCSS('panel-height', `${this.$root.panelHeight - 20}px`);
+    },
+    appThemeChanged(event) {
+      var skinInfo = JSON.parse(window.__adobe_cep__.getHostEnvironment()).appSkinInfo;
+      console.log('Detected theme change')
+      Event.$emit('findTheme', skinInfo);
+    },
+    handleResize(evt) {
+      if (this.$root.activeApp == 'AEFT') {
+        this.$root.panelWidth = document.documentElement.clientWidth;
+        this.$root.panelHeight = document.documentElement.clientHeight;
+      } else {
+        this.$root.panelWidth = document.documentElement.clientWidth;
+        this.$root.panelHeight = document.documentElement.clientHeight;
+        this.setPanelCSSHeight();
+        if (this.$root.debugMode) {
+          this.$root.dispatchEvent('debug.listen', JSON.stringify(this.$root.clone));
+        }
+      }
+    },
     activeMods() {
       var mirror = [], child = {};
-      if (this.Ctrl) {
-        child = { name: 'Ctrl', key: 0 }
-        mirror.push(child);
-      }
+      if (this.Ctrl)
+        child = { name: 'Ctrl', key: 0 }, mirror.push(child);
       if (this.Shift) {
         child = { name: 'Shift', key: 1 }
         mirror.push(child);
@@ -74,49 +403,193 @@ Vue.component('mod-keys', {
       this.activeList = mirror;
     },
     clearMods() {
-      this.Shift = false;
-      this.Alt = false;
-      this.Ctrl = false;
+      this.Shift = false, this.Alt = false, this.Ctrl = false;
       this.activeList = [];
     },
     updateMods() {
-      this.Ctrl = this.$root.Ctrl;
-      this.Shift = this.$root.Shift;
-      this.Alt = this.$root.Alt;
+      this.Ctrl = this.$root.Ctrl, this.Shift = this.$root.Shift, this.Alt = this.$root.Alt;
       this.activeMods();
     },
-    getModKeyClass(type) {
-      return 'modKey-' + type.name + '-Active'
+    onMouseDown(e, el) {
+      this.$root.isDragging = true, this.wasDragging = false;
+      this.lastMouseX = this.$root.mouseX, this.lastMouseY = this.$root.mouseY;
+      Event.$emit('newAction', 'Mouse click');
     },
-    onMouseOutside(e, el) {
-      // console.log(e)
+    onMouseUp(e, el) {
+      if (this.$root.isDragging) {
+        if (((this.lastMouseX <= this.$root.mouseX + 6) && (this.lastMouseX >= this.$root.mouseX - 6)) && ((this.lastMouseY <= this.$root.mouseY + 6) && (this.lastMouseY >= this.$root.mouseY - 6))) {
+          this.wasDragging = false;
+        } else {
+          Event.$emit('newAction', 'Click/Drag');
+          this.wasDragging = true;
+        }
+        this.$root.isDragging = false;
+      } else {
+        // Event.$emit('newAction', 'Drag release');
+      }
+    },
+    onMouseMove(e, el) {
+      this.$root.mouseX = e.clientX, this.$root.mouseY = e.clientY;
+      if (this.$root.isDragging) {
+        Event.$emit('newAction', 'Click-drag')
+      } else {
+        if (((this.lastMouseX <= this.$root.mouseX + 6) && (this.lastMouseX >= this.$root.mouseX - 6)) && ((this.lastMouseY <= this.$root.mouseY + 6) && (this.lastMouseY >= this.$root.mouseY - 6))) {
+          //
+        } else {
+          Event.$emit('newAction', 'Mouse move');
+        }
+      }
       this.$root.parseModifiers(e);
+      // console.log(`${this.$root.mouseX}, ${this.$root.mouseY}`)
+    },
+    onClickOutside(e, el) {
+      if (!this.wasDragging) {
+        Event.$emit('newAction', 'Mouse click');
+      }
     },
     onKeyDownOutside(e, el) {
-      // console.log(e)
       this.$root.parseModifiers(e);
+      this.checkDebugKeypress(e);
+      Event.$emit('newAction', 'keyDown');
     },
     onKeyUpOutside(e, el) {
-      // console.log(e)
       this.$root.parseModifiers(e);
+      this.checkDebugKeypress(e);
+      Event.$emit('newAction', 'keyUp');
     },
-  },
-  computed: {
-    isDefault: function () { return this.$root.isDefault },
+    getLastKey(msg) {
+      if (/Control/.test(msg)) {
+        msg = 'Ctrl'
+      }
+      if (msg !== this.lastKey) {
+        if (((this.$root.isDefault) && (msg !== 'Unidentified')) || ((msg == 'Ctrl') || (msg == 'Shift') || (msg == 'Alt'))) {
+          if ((msg == 'Ctrl') || (msg == 'Shift') || (msg == 'Alt')) {
+            var stack = []
+            if (this.hasCtrl)
+              stack.push(this.hasCtrl)
+            if (this.hasShift)
+              stack.push(this.hasShift)
+            if (this.hasAlt)
+              stack.push(this.hasAlt)
+
+            if (stack.length) {
+              console.log('Had length')
+              this.lastKey = stack.join('+')
+            } else {
+              console.log('No length')
+              this.lastKey = msg;
+            }
+          } else {
+            this.lastKey = msg;
+          }
+        } else if (msg == 'Unidentified') {
+          this.lastKey = 'Meta'
+        } else {
+          var stack = []
+          if (this.hasCtrl)
+            stack.push(this.hasCtrl)
+          if (this.hasShift)
+            stack.push(this.hasShift)
+          if (this.hasAlt)
+            stack.push(this.hasAlt)
+          stack.push(msg);
+          this.lastKey = stack.join('+')
+        }
+        this.$root.lastKey = this.lastKey;
+      }
+    },
   },
 })
 
+
+Vue.component('stylizer', {
+  template: `
+    <div class="stylizer"></div>
+  `,
+  data() {
+    return {
+      cssOrder: ['bg', 'icon', 'border', 'button-hover', 'button-active', 'button-disabled', 'text-active', 'text-default', 'text-disabled', 'input-focus', 'input-idle', 'scrollbar', 'scrollbar-thumb', 'scrollbar-thumb-hover', 'scrollbar-thumb-width', 'scrollbar-thumb-radius'],
+      activeStyle: [],
+      styleList: {
+        ILST: {
+          lightest: ['#f0f0f0', '#535353', '#dcdcdc', '#f9f9f9', '#bdbdbd', '#e6e6e6', '#484848', '#484848', '#c6c6c6', '#ffffff', '#ffffff', '#fbfbfb', '#dcdcdc', '#a6a6a6', '20px', '20px'],
+          light: ['#b8b8b8', '#404040', '#5f5f5f', '#dcdcdc', '#969696', '#b0b0b0', '#101010', '#101010', '#989898', '#e3e3e3', '#e3e3e3', '#c4c4c4', '#a8a8a8', '#7b7b7b', '20px', '10px'],
+          dark: ['#535353', '#c2c2c2', '#5f5f5f', '#4a4a4a', '#404040', '#5a5a5a', '#d8d8d8', '#d5d5d5', '#737373', '#ffffff', '#474747', '#4b4b4b', '#606060', '#747474', '20px', '10px'],
+          darkest: ['#323232', '#b7b7b7', '#5f5f5f', '#292929', '#1f1f1f', '#393939', '#1b1b1b', '#a1a1a1', '#525252', '#fcfcfc', '#262626', '#2a2a2a', '#383838', '#525252', '20px', '10px'],
+        },
+      }
+    }
+  },
+  mounted() {
+    Event.$on('findTheme', this.findTheme);
+  },
+  methods: {
+    setGradientTheme() {
+      console.log('This is an After Effects theme');
+      this.$root.setCSS('color-bg', toHex(appSkin.panelBackgroundColor.color));
+      this.$root.setCSS('color-scrollbar', toHex(appSkin.panelBackgroundColor.color, -20));
+      this.$root.setCSS('color-scrollbar-thumb', toHex(appSkin.panelBackgroundColor.color));
+      this.$root.setCSS('color-scrollbar-thumb-hover', toHex(appSkin.panelBackgroundColor.color, 10));
+    },
+    detectTheme() {
+      let app = this.$root.activeApp, theme = this.$root.activeTheme;
+    },
+    assignTheme() {
+      let app = this.$root.activeApp, theme = this.$root.activeTheme;
+      for (var i = 0; i < this.cssOrder.length; i++) {
+        let prop = this.cssOrder[i], value = this.styleList[app][theme][i];
+        if (!/width|radius/.test(prop)) {
+          this.$root.setCSS(`color-${prop}`, value);
+        } else {
+          this.$root.setCSS(prop, value);
+        }
+      }
+    },
+    getCSSName(str) {
+      if (/\_/gm.test(str))
+        str = str.replace(/\_/gm, '-');
+      return str;
+    },
+    findTheme(appSkin) {
+      if (this.$root.activeApp !== 'AEFT') {
+        if (appSkin.panelBackgroundColor.color.red > 230)
+          this.$root.activeTheme = 'lightest';
+        else if (appSkin.panelBackgroundColor.color.red > 170)
+          this.$root.activeTheme = 'light';
+        else if (appSkin.panelBackgroundColor.color.red > 80)
+          this.$root.activeTheme = 'dark';
+        else
+          this.$root.activeTheme = 'darkest';
+        this.$root.updateStorage();
+      } else {
+        this.setGradientTheme();
+      }
+      this.assignTheme();
+    },
+  }
+})
 
 var app = new Vue({
   el: '#app',
   data: {
     macOS: false,
-    panelWidth: 100,
-    panelHeight: 200,
-    persistent: true,
-    // storage: window.localStorage,
+    debugMode: false,
+    notificationsEnabled: true,
+    needsUpdate: true,
+    name: 'none',
+    panelWidth: null,
+    panelHeight: null,
+    mouseX: null,
+    mouseY: null,
+    lastKey: null,
+    lastAction: 'No action',
+    isDragging: false,
+    winW: null,
+    winH: null,
+    homepage: 'https://www.inventsable.cc#namelow',
     activeApp: csInterface.hostEnvironment.appName,
     activeTheme: 'darkest',
+    showConsole: true,
     isWake: false,
     Shift: false,
     Ctrl: false,
@@ -124,8 +597,10 @@ var app = new Vue({
     context: {
       menu: [
         { id: "refresh", label: "Refresh panel", enabled: true, checkable: false, checked: false, },
-        { id: "persistent", label: "Persistent Y/N", enabled: true, checkable: true, checked: true, },
-
+        { id: "notificationsEnabled", label: "Show notifications", enabled: true, checkable: true, checked: true, },
+        { id: "test", label: "Run test", enabled: true, checkable: false, checked: false, },
+        { label: "---" },
+        { id: "about", label: "Go to Homepage", enabled: true, checkable: false, checked: false, },
       ],
     },
   },
@@ -137,227 +612,194 @@ var app = new Vue({
         result = false;
       return result;
     },
-    CtrlShift: function () {
-      if ((this.Ctrl) && (this.Shift)) {
-        return true;
-      } else {
-        return false;
+    rootName: function () {
+      const str = csInterface.getSystemPath(SystemPath.EXTENSION);
+      return str.substring(str.lastIndexOf('/') + 1, str.length);
+    },
+    clone: function () {
+      let self = this;
+      let child = {
+        name: self.rootName,
+        mouseX: self.mouseX,
+        mouseY: self.mouseY,
+        panelHeight: document.documentElement.clientHeight,
+        panelWidth: document.documentElement.clientWidth,
+        lastKey: self.lastKey,
+        lastAction: self.lastAction,
       }
+      return JSON.stringify(child);
     },
-    CtrlAlt: function () {
-      if ((this.Ctrl) && (this.Alt)) {
-        return true;
-      } else {
-        return false;
-      }
-    },
-    ShiftAlt: function () {
-      if ((this.Shift) && (this.Alt)) {
-        return true;
-      } else {
-        return false;
-      }
-    },
-    CtrlShiftAlt: function () {
-      if ((this.Ctrl) && (this.Shift) && (this.Alt)) {
-        return true;
-      } else {
-        return false;
-      }
-    },
-    CtrlOnly: function () {
-      if ((this.Ctrl) && (!this.Shift) && (!this.Alt))
-        return true;
-      else
-        return false;
-    },
-    ShiftOnly: function () {
-      if ((!this.Ctrl) && (this.Shift) && (!this.Alt))
-        return true;
-      else
-        return false;
-    },
-    AltOnly: function () {
-      if ((!this.Ctrl) && (!this.Shift) && (this.Alt))
-        return true;
-      else
-        return false;
-    },
+    isSmall: function () { return (this.panelWidth < 120) ? true : false; },
+    isMedium: function () { return ((this.panelWidth > 120) && (this.panelWidth < 200)) ? true : false; },
+    isLarge: function () { return (this.panelWidth > 200) ? true : false; },
   },
-  mounted: function () {
+  mounted() {
     var self = this;
+    this.name = this.rootName;
     if (navigator.platform.indexOf('Win') > -1) { this.macOS = false; } else if (navigator.platform.indexOf('Mac') > -1) { this.macOS = true; }
-    // this.startStorage();
     this.readStorage();
     this.setContextMenu();
-    this.handleResize(null);
-    window.addEventListener('resize', this.handleResize);
-    Event.$on('modsUpdate', self.parseModifiers);
+    Event.$on('debugModeOn', this.startDebug);
+    Event.$on('debugModeOff', this.stopDebug);
     Event.$on('updateStorage', self.updateStorage);
-    csInterface.addEventListener(CSInterface.THEME_COLOR_CHANGED_EVENT, self.appThemeChanged);
-    this.appThemeChanged();
+    this.getVersion();
+    this.tryFetch();
+    if (this.notificationsEnabled)
+      Event.$emit('showNotification');
+    else
+      Event.$emit('hideNotification');
   },
   methods: {
-    contextMenuClicked(id) {
-      var target = this.findMenuItemById(id);
-      if (id == "refresh")
-        location.reload();
-      this.updateStorage();
+    getVersion() {
+      const path = csInterface.getSystemPath(SystemPath.EXTENSION);
+      const xml = window.cep.fs.readFile(`${path}/CSXS/manifest.xml`);
+      const verID = /(\w|\<|\s|\=|\"|\.)*ExtensionBundleVersion\=\"(\d|\.)*(?=\")/;
+      let match = xml.data.match(verID);
+      if (match.length) {
+        const str = match[0].split(' ');
+        this.buildNumber = str[(str.length - 1)].replace(/\w*\=\"/, '');
+      } else {
+        this.buildNumber = 'unknown';
+      }
+      Event.$emit('console.string', this.buildNumber);
     },
-    startStorage() {
-      storage.setItem('contextmenu', JSON.stringify(this.context.menu));
-      storage.setItem('persistent', JSON.stringify(false));
-      storage.setItem('theme', 'darkest');
+    tryFetch() {
+      fetch('http://inventsable.cc/master.json')
+        .then(function (response) {
+          return response.json();
+        })
+        .then(function (myJson) {
+          console.log(myJson);
+          Event.$emit('checkHTMLData', myJson);
+        });
+      Event.$emit('console.full', this.buildNumber);
+    },
+    checkHTMLData(result) {
+      for (let [key, value] of Object.entries(result.master)) {
+        if (key == this.rootName) {
+          if (value.version !== this.buildNumber) {
+            Event.$emit('promptUpdate', JSON.stringify(value));
+            Event.$emit('console.full', JSON.stringify(value))
+            this.needsUpdate = true;
+          } else {
+            this.needsUpdate = false;
+          }
+        }
+      }
+    },
+    startDebug() {
+      this.debugMode = true;
+      console.log('Received')
+      if (this.isWake) {
+        console.log('sending clone');
+        this.dispatchEvent('debug.listen', JSON.stringify(this.clone));
+      }
+    },
+    stopDebug() { 
+      this.debugMode = false; 
+      console.log('Stopping debug')
+    },
+    dispatchEvent(name, data) {
+      var event = new CSEvent(name, 'APPLICATION');
+      event.data = data;
+      csInterface.dispatchEvent(event);
     },
     readStorage() {
       var storage = window.localStorage;
       if (!storage.length) {
-        console.log('There is no pre-existing session data');
-        storage.setItem('contextmenu', JSON.stringify(this.context.menu));
-        storage.setItem('persistent', JSON.stringify(false));
-        storage.setItem('theme', self.activeTheme);
-        // storage.setItem('appName', self.activeApp);
+        console.log('There was no pre-existing session data');
+        this.updateStorage();
       } else {
-        console.log('There is pre-existing session data');
+        console.log('Detected previous session data');
         this.context.menu = JSON.parse(storage.getItem('contextmenu'));
-        this.persistent = JSON.parse(storage.getItem('persistent'));
-        this.activeTheme = storage.getItem('theme');
-        // this.activeApp = storage.getItem('appName');
+        this.notificationsEnabled = JSON.parse(storage.getItem('notificationsEnabled'));
+        this.rememberContextMenu(storage);
+        console.log(storage);
+        console.log(this.notificationsEnabled);
       }
-
-      console.log(storage);
+      Event.$emit('rebuildEvents');
     },
     updateStorage() {
       var storage = window.localStorage, self = this;
       storage.setItem('contextmenu', JSON.stringify(self.context.menu));
-      storage.setItem('persistent', JSON.stringify(self.persistent));
-      storage.setItem('theme', self.activeTheme);
-      storage.setItem('appName', self.activeApp);
-      console.log(`Updating local storage:
-        Persistent: ${this.persistent}
-        Theme: ${this.activeTheme}`)
+      storage.setItem('notificationsEnabled', JSON.stringify(self.notificationsEnabled));
+      this.setContextMenuMemory(storage);
+      console.log(storage);
+    },
+    setContextMenuMemory(storage) {
+      for (var i = 0; i < this.context.menu.length; i++) {
+        var target = this.context.menu[i], name = target.id;
+        if (target.checkable) {
+          // console.log(name);
+          // console.log(this[name])
+          storage.setItem(name, this[name]);
+        }
+      }
+    },
+    rememberContextMenu(storage) {
+      for (var i = 0; i < this.context.menu.length; i++) {
+        var target = this.context.menu[i], name = target.id;
+        if (target.checkable) {
+          console.log(name)
+          this[name] = JSON.parse(storage.getItem(name));
+          this.context.menu[i].checked = this[name];
+        }
+      }
     },
     setContextMenu() {
       var self = this;
-      // console.log('setting context menu');
       csInterface.setContextMenuByJSON(self.menuString, self.contextMenuClicked);
-      csInterface.updateContextMenuItem('persistent', true, self.persistent);
-      // this.handleConfig();
     },
-    appThemeChanged(event) {
-      var skinInfo = JSON.parse(window.__adobe_cep__.getHostEnvironment()).appSkinInfo;
-      this.findTheme(skinInfo);
-      console.log(`Theme changed to ${this.activeTheme}`);
+    contextMenuClicked(id) {
+      var target = this.findMenuItemById(id), parent = this.findMenuItemById(id, true);
+      if (id == "refresh") {
+        location.reload();
+      } else if (id == 'about') {
+        cep.util.openURLInDefaultBrowser(this.homepage);
+      } else if (id == 'test') {
+        loadJSX(csInterface.hostEnvironment.appName + '/host.jsx');
+      } else if (id == 'notificationsEnabled') {
+        this.notificationsEnabled = !this.notificationsEnabled;
+        if (this.notificationsEnabled)
+          Event.$emit('showNotification');
+        else
+          Event.$emit('hideNotification');
+      } else {
+        this[id] = !this[id];
+        var target = this.findMenuItemById(id);
+        target.checked = this[id];
+      }
       this.updateStorage();
     },
-    findTheme(appSkin) {
-      // AE uses smooth gradients. Isolate the others apps from it
-      if ((this.$root.activeApp == 'ILST') || (this.$root.activeApp == 'PHXS')) {
-        if (toHex(appSkin.panelBackgroundColor.color) == '#f0f0f0') {
-          this.activeTheme = 'lightest';
-          if (this.$root.activeApp == 'ILST') {
-            this.setCSS('color-scroll', '#fbfbfb');
-            this.setCSS('color-scroll-thumb', '#dcdcdc');
-            this.setCSS('color-scroll-thumb-hover', '#a6a6a6');
-          } else if (this.$root.activeApp == 'PHXS') {
-            this.setCSS('color-scroll', '#e3e3e3');
-            this.setCSS('color-scroll-thumb', '#bdbdbd');
-            this.setCSS('color-scroll-thumb-hover', '#bdbdbd');
-          }
-        } else if (toHex(appSkin.panelBackgroundColor.color) == '#b8b8b8') {
-          this.activeTheme = 'light';
-          if (this.$root.activeApp == 'ILST') {
-            this.setCSS('color-scroll', '#c4c4c4');
-            this.setCSS('color-scroll-thumb', '#a8a8a8');
-            this.setCSS('color-scroll-thumb-hover', '#7b7b7b');
-          } else if (this.$root.activeApp == 'PHXS') {
-            this.setCSS('color-scroll', '#ababab');
-            this.setCSS('color-scroll-thumb', '#858585');
-            this.setCSS('color-scroll-thumb-hover', '#858585');
-          }
-        } else if (toHex(appSkin.panelBackgroundColor.color) == '#535353') {
-          this.activeTheme = 'dark';
-          if (this.$root.activeApp == 'ILST') {
-            this.setCSS('color-scroll', '#4b4b4b');
-            this.setCSS('color-scroll-thumb', '#606060');
-            this.setCSS('color-scroll-thumb-hover', '#747474');
-          } else if (this.$root.activeApp == 'PHXS') {
-            this.setCSS('color-scroll', '#4a4a4a');
-            this.setCSS('color-scroll-thumb', '#696969');
-            this.setCSS('color-scroll-thumb-hover', '#696969');
-          }
-        } else if (toHex(appSkin.panelBackgroundColor.color) == '#323232') {
-          this.activeTheme = 'darkest';
-          if (this.$root.activeApp == 'ILST') {
-            this.setCSS('color-scroll', '#2a2a2a');
-            this.setCSS('color-scroll-thumb', '#383838');
-            this.setCSS('color-scroll-thumb-hover', '#525252');
-          } else if (this.$root.activeApp == 'PHXS') {
-            this.setCSS('color-scroll', '#292929');
-            this.setCSS('color-scroll-thumb', '#474747');
-            this.setCSS('color-scroll-thumb-hover', '#474747');
-          }
-        }
-        this.setCSS('color-bg', toHex(appSkin.panelBackgroundColor.color));
-        this.setCSS('color-ui-hover', this.$root.getCSS('color-scroll'));
-        if (this.$root.activeApp == 'ILST') {
-          this.setCSS('scroll-radius', '20px');
-          this.setCSS('thumb-radius', '10px');
-        } else {
-          this.setCSS('scroll-radius', '1px');
-          this.setCSS('thumb-width', '8px');
-        }
-      } else {
-        console.log('This is an After Effects theme');
-        this.activeTheme = 'afterFX';
-        this.setCSS('color-bg', toHex(appSkin.panelBackgroundColor.color));
-        this.setCSS('color-ui-hover', toHex(appSkin.panelBackgroundColor.color, -10));
-        this.setCSS('color-scroll', toHex(appSkin.panelBackgroundColor.color, -20));
-        this.setCSS('color-scroll-thumb', toHex(appSkin.panelBackgroundColor.color));
-        this.setCSS('color-scroll-thumb-hover', toHex(appSkin.panelBackgroundColor.color, 10));
-        this.setCSS('scroll-radius', '20px');
-        this.setCSS('thumb-width', '10px');
-      }
-    },
-    findMenuItemById(id) {
-      var result;
+    findMenuItemById(id, requested = false) {
+      var child, parent;
       for (var i = 0; i < this.context.menu.length; i++) {
         for (let [key, value] of Object.entries(this.context.menu[i])) {
           if (key == "menu") {
+            parent = this.context.menu[i];
             for (var v = 0; v < value.length; v++) {
               for (let [index, data] of Object.entries(value[v])) {
                 if ((index == "id") && (data == id))
-                  result = value[v];
+                  child = value[v];
               }
             }
           }
           if ((key == "id") && (value == id)) {
-            result = this.context.menu[i];
+            child = this.context.menu[i], parent = 'root';
           }
         }
       }
-      return result;
+      return (requested) ? parent : child;
     },
-    handleResize(evt) {
-      if (this.$root.activeApp == 'AEFT') {
-        // console.log(`w: ${this.panelWidth}, h: ${this.panelHeight}`);
-        this.panelHeight = document.documentElement.clientHeight;
-        // this.setPanelCSS();
-        console.log(evt);
-      } else {
-        this.panelWidth = document.documentElement.clientWidth;
-        this.panelHeight = document.documentElement.clientHeight;
-        this.setPanelCSS();
+    toggleMenuItemSiblings(parent, exclude, state) {
+      if (parent.length) {
+        for (var i = 0; i < parent.length; i++) {
+          if (parent[i].id !== exclude)
+            csInterface.updateContextMenuItem(parent[i].id, true, state);
+        }
       }
     },
-    flushModifiers() {
-      this.Ctrl = false;
-      this.Shift = false;
-      this.Alt = false;
-      Event.$emit('clearMods');
-    },
     parseModifiers(evt) {
-      // console.log(evt)
       var lastMods = [this.Ctrl, this.Shift, this.Alt]
       if (this.isWake) {
         if (((!this.macOS) && (evt.ctrlKey)) || ((this.macOS) && (evt.metaKey))) {
@@ -376,11 +818,11 @@ var app = new Vue({
           this.Alt = false;
         };
         var thisMods = [this.Ctrl, this.Shift, this.Alt]
-        if (!this.isEqualArray(lastMods, thisMods))
-          console.log(`${thisMods} : ${lastMods}`)
-        Event.$emit('updateModsUI');
+        // if (!this.isEqualArray(lastMods, thisMods))
+        // console.log(`${thisMods} : ${lastMods}`)
+        // Event.$emit('updateModsUI');
       } else {
-        Event.$emit('clearMods');
+        // Event.$emit('clearMods');
       }
     },
     flushModifiers() {
@@ -395,13 +837,6 @@ var app = new Vue({
     sleep() {
       this.isWake = false;
       this.flushModifiers();
-    },
-    testCS(evt) {
-      this.cs.evalScript(`alert('${evt}')`)
-    },
-    setPanelCSS() {
-      this.setCSS('panel-height', `${this.panelHeight - 10}px`);
-      // this.setCSS('panel-width', `${this.panelWidth}px`);
     },
     getCSS(prop) {
       return window.getComputedStyle(document.documentElement).getPropertyValue('--' + prop);
@@ -423,11 +858,10 @@ var app = new Vue({
       return result;
     },
     removeEmptyValues(keyList, mirror = []) {
-      // console.log(keyList);
       for (var i = 0; i < keyList.length; i++) {
         var targ = keyList[i];
         if ((/\s/.test(targ)) || (targ.length < 6)) {
-          // console.log('Empty');
+          // no action
         } else {
           mirror.push(targ);
         }
@@ -453,48 +887,3 @@ var app = new Vue({
     },
   }
 });
-
-// Vue.component('test-btn', {
-//   props: ['label'],
-//   template: `
-//     <div
-//       class="btn"
-//       @click="runTest(label)">
-//       {{label}}
-//     </div>
-//   `,
-//   methods: {
-//     runTest: function(e) {
-//       var targ = this.$root.compi, self = this;
-//       try {
-//         if (/run/.test(e))
-//           csInterface.evalScript(`kickstart()`, self.recolor)
-//         else if (/color/.test(e))
-//           csInterface.evalScript(`colorcode()`, this.$root.getNames)
-//         else if (/reset/.test(e))
-//           csInterface.evalScript(`displayColorLabels()`)
-//         else
-//           csInterface.evalScript(`${e}()`)
-//           // console.log('nothing happened');
-//       } catch(err) {
-//         console.log(err.data);
-//       } finally {
-//         console.log(`Ran ${e}`);
-//       }
-//     },
-//     recolor: function(e) {
-//       var targ = this.$root.compi;
-//       csInterface.evalScript(`colorcode()`, this.$root.getNames)
-//     }
-//   }
-// })
-
-// Vue.component('test-toolbar', {
-//   template: `
-//     <div class="testToolbar">
-//       <test-btn label="run"></test-btn>
-//       <test-btn label="color"></test-btn>
-//       <test-btn label="reset"></test-btn>
-//     </div>
-//   `,
-// })

@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ExtensionList>
-    <Extension Id="com.exthere.panel">
+    <Extension Id="inventsable.exthere.panel">
         <HostList>
-            <Host Name="ILST" Port="numb"/>
+            <Host Name="ILST" Port="numb1"/>
+            <Host Name="PHXS" Port="numb2"/>
+            <Host Name="AEFT" Port="numb3"/>
         </HostList>
     </Extension>
 </ExtensionList>
